@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="NexusCommon/NexusCommon.csproj" Id="120a6c1a-2ae7-4b61-bbe0-b1a0883bde08" />
+  <Project Path="NexusVtp/NexusVtp.csproj" Id="5e08406e-40d8-49d0-b20c-f388d158490d" />
+</Solution>
