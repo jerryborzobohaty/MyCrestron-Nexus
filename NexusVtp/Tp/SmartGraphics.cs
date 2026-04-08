@@ -10,6 +10,7 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Reflection;
 
 namespace NexusVtp
 {
@@ -116,6 +117,15 @@ namespace NexusVtp
         }
 
         /// <summary>
+        /// Array of all item cue enumerations for iteration
+        /// </summary>
+        public static readonly SgCue[] ItemCues = new[]
+{
+            SgCue.Item1, SgCue.Item2, SgCue.Item3, SgCue.Item4, SgCue.Item5,
+            SgCue.Item6, SgCue.Item7, SgCue.Item8, SgCue.Item9
+        };
+
+        /// <summary>
         /// Logs detailed Smart Object event information for debugging purposes
         /// </summary>
         /// <param name="o">The source object that raised the event</param>
@@ -150,7 +160,7 @@ namespace NexusVtp
                 if (uint.TryParse(match.Value, out uint number))
                 {
                     return number;
-                }
+        }
                 else
                 {
                     // Handle conversion failure
@@ -186,10 +196,10 @@ namespace NexusVtp
         /// Sets the icon for a single Smart Object list item
         /// </summary>
         public static void SetItemIcon(ExtendedSmartObject smartObject, uint itemNumber, string value)
-        {
+            {
             var signalName = $"Item {itemNumber} Icon";
             smartObject.SmartObject.StringInput[signalName].StringValue = value;
-        }
+            }
 
         /// <summary>
         /// Sets the icon for a single Smart Object list item
@@ -213,7 +223,7 @@ namespace NexusVtp
         /// Sets the visible state for a single Smart Object list item
         /// </summary>
         public static void SetItemVisible(ExtendedSmartObject smartObject, uint itemNumber, bool value)
-        {
+            {
             var signalName = $"Item {itemNumber} Visible";
             smartObject.SmartObject.BooleanInput[signalName].BoolValue = value;
         }
@@ -222,12 +232,12 @@ namespace NexusVtp
         /// Sets enabled state for multiple Smart Object list items from a dictionary
         /// </summary>
         public static void SetItemEnabledByDictionary(ExtendedSmartObject smartObject, Dictionary<uint, bool> valueMap)
-        {
+                {
             foreach (var kv in valueMap)
-            {
+                    {
                 SetItemEnabled(smartObject, kv.Key, kv.Value);
             }
-        }
+                    }
 
         /// <summary>
         /// Sets icons for multiple Smart Object list items from a dictionary
@@ -235,10 +245,10 @@ namespace NexusVtp
         public static void SetItemIconByDictionary(ExtendedSmartObject smartObject, Dictionary<uint, string> valueMap)
         {
             foreach (var kv in valueMap)
-            {
+                    {
                 SetItemIcon(smartObject, kv.Key, kv.Value);
             }
-        }
+                    }
 
         /// <summary>
         /// Sets text for multiple Smart Object list items from a dictionary
@@ -246,10 +256,10 @@ namespace NexusVtp
         public static void SetItemTextByDictionary(ExtendedSmartObject smartObject, Dictionary<uint, string> valueMap)
         {
             foreach (var kv in valueMap)
-            {
+                    {
                 SetItemText(smartObject, kv.Key, kv.Value);
-            }
-        }
+                    }
+                }
 
         /// <summary>
         /// Sets visible state for multiple Smart Object list items from a dictionary
@@ -257,7 +267,7 @@ namespace NexusVtp
         public static void SetItemVisibleByDictionary(ExtendedSmartObject smartObject, Dictionary<uint, bool> valueMap)
         {
             foreach (var kv in valueMap)
-            {
+                {
                 SetItemVisible(smartObject, kv.Key, kv.Value);
             }
         }
