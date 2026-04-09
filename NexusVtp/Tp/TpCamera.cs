@@ -1,16 +1,11 @@
-﻿using Crestron.SimplSharp;
-using Crestron.SimplSharpPro;
-using Crestron.SimplSharpPro.UI;
+﻿using Crestron.SimplSharpPro;
 using Forte.SSPro.UI.Helper.Library.UI;
-using Independentsoft.Exchange;
 using Nexus.Driver.Architecture.Components;
 using Nexus.Driver.Architecture.Configuration;
-using Nexus.Driver.Architecture.Devices;
 using Nexus.Framework.Services;
 using Nexus.Utils;
 using Nexus.Vaddio.RoboshotIP.Driver;
 using NexusCommon;
-using Quartz.Util;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -24,6 +19,9 @@ namespace NexusVtp
     /// </summary>
     public class TpCamera
     {
+        /// <summary>
+        /// Maximum number of presets available per camera
+        /// </summary>
         private const int MaxPreset = 6;
         /// <summary>
         /// Time in seconds until a faster command is sent during hold
@@ -34,22 +32,67 @@ namespace NexusVtp
         /// </summary>
         const int SaveTimeout = 5;
 
+        /// <summary>
+        /// Friendly name of the panel for debugging purposes
+        /// </summary>
         private string _panelName = string.Empty;
-        private Panel _Panel;
+        /// <summary>
+        /// The Crestron touchpanel instance
+        /// </summary>
+        private Panel _panel;
+        /// <summary>
+        /// Smart object for camera selection
+        /// </summary>
         private ExtendedSmartObject _select;
+        /// <summary>
+        /// Smart object for directional pad (pan/tilt control)
+        /// </summary>
         private ExtendedSmartObject _dpad;
+        /// <summary>
+        /// Smart object for preset recall/save
+        /// </summary>
         private ExtendedSmartObject _preset;
+        /// <summary>
+        /// Indicates whether the system is in save mode for storing presets
+        /// </summary>
         private bool _saveMode = false;
+        /// <summary>
+        /// Dictionary of available cameras, keyed by item number
+        /// </summary>
         private Dictionary<uint, ICamera> _cameras;
-        
+
+        /// <summary>
+        /// Timer for detecting hold duration on directional pad
+        /// </summary>
         private Timer _timerHold;
+        /// <summary>
+        /// Timer for auto-exiting save mode after timeout
+        /// </summary>
         private Timer _timerSaveTimeout;
+        /// <summary>
+        /// Lock object for thread-safe access to directional pad state during hold detection
+        /// </summary>
         private readonly object _holdLock = new object();
+        /// <summary>
+        /// The currently active direction during a hold operation, null if no direction is active
+        /// </summary>
         private Direction? _activeDirection = null;
+        /// <summary>
+        /// Flag indicating whether a faster movement command has been sent during the hold
+        /// </summary>
         private bool _fastCommandSent = false;
+        /// <summary>
+        /// Indicates whether auto focus is currently enabled
+        /// </summary>
         private bool _autoFocus = false;
+        /// <summary>
+        /// The currently selected camera interface
+        /// </summary>
         private ICamera _selectedCamera;
 
+        /// <summary>
+        /// Preset labels for the currently selected camera, keyed by preset number
+        /// </summary>
         private Dictionary<uint, string> _labelPreset = new Dictionary<uint, string>();
 
         /// <summary>
@@ -57,8 +100,14 @@ namespace NexusVtp
         /// </summary>
         private Dictionary<string, Dictionary<uint, string>> _presetLabelsByCamera = new Dictionary<string, Dictionary<uint, string>>();
 
+        /// <summary>
+        /// Camera selection labels, keyed by camera item number
+        /// </summary>
         private Dictionary<uint, string> _labelSelect = new Dictionary<uint, string>();
 
+        /// <summary>
+        /// Visibility state of preset items, keyed by preset number
+        /// </summary>
         private Dictionary<uint, bool> _visiblePreset = new Dictionary<uint, bool>
         {
             { 1, true },
@@ -69,6 +118,9 @@ namespace NexusVtp
             { 6, true },
         };
 
+        /// <summary>
+        /// Visibility state of camera selection items, keyed by camera item number
+        /// </summary>
         private Dictionary<uint, bool> _visibleSelect = new Dictionary<uint, bool>();
 
 
@@ -77,11 +129,10 @@ namespace NexusVtp
         /// </summary>
         /// <param name="panel">The panel instance</param>
         /// <param name="panelName">Description of the panel for debugging</param>
-        /// <param name="camera">The camera device</param>
-        //public TpCamera(Panel panel, string panelName, VaddioRoboshotIP camera)
+        /// <param name="cameras">Dictionary of camera devices, keyed by item number</param>
         public TpCamera(Panel panel, string panelName, Dictionary<uint, ICamera> cameras)
         {
-            this._Panel = panel;
+            this._panel = panel;
             this._panelName = panelName;
             this._cameras = cameras;
             Initialize();
@@ -92,11 +143,17 @@ namespace NexusVtp
         /// </summary>
         enum Btn
         {
+            /// <summary>Zoom in button</summary>
             ZoomIn = 605,
+            /// <summary>Zoom out button</summary>
             ZoomOut = 606,
+            /// <summary>Focus near button</summary>
             FocusIn = 607,
+            /// <summary>Focus far button</summary>
             FocusOut = 608,
+            /// <summary>Auto focus button</summary>
             FocusAuto = 609,
+            /// <summary>Save preset button</summary>
             Save = 637,
         }
 
@@ -105,9 +162,13 @@ namespace NexusVtp
         /// </summary>
         enum Direction
         {
+            /// <summary>Tilt up</summary>
             Up = 1,
+            /// <summary>Tilt down</summary>
             Down = 2,
+            /// <summary>Pan left</summary>
             Left = 3,
+            /// <summary>Pan right</summary>
             Right = 4,
         }
         /// <summary>
@@ -115,7 +176,9 @@ namespace NexusVtp
         /// </summary>
         enum Speed
         {
+            /// <summary>Speed for initial button press</summary>
             Press = 5,
+            /// <summary>Speed for held button (faster movement)</summary>
             Held = 15,
         }
 
@@ -135,19 +198,19 @@ namespace NexusVtp
                 _timerSaveTimeout.Elapsed += OnTimerSaveTimeoutElapsed;
 
                 // buttons - joins
-                var bgZoom = _Panel.AddButtonGroup("Zoom", (uint)Btn.ZoomIn, (uint)Btn.ZoomOut);
+                var bgZoom = _panel.AddButtonGroup("Zoom", (uint)Btn.ZoomIn, (uint)Btn.ZoomOut);
                 bgZoom.OnPanelButtonGroupChange += OnBgZoom;
 
-                var bgFocus = _Panel.AddButtonGroup("Focus", (uint)Btn.FocusIn, (uint)Btn.FocusAuto);
+                var bgFocus = _panel.AddButtonGroup("Focus", (uint)Btn.FocusIn, (uint)Btn.FocusAuto);
                 bgFocus.OnPanelButtonGroupChange += OnBgFocus;
 
-                var btnSave = _Panel.AddButtonGroup("Save", (uint)Btn.Save);
+                var btnSave = _panel.AddButtonGroup("Save", (uint)Btn.Save);
                 btnSave.OnPanelButtonGroupChange += OnBtnSave;
 
                 // add smart object 
-                _select = _Panel.AddSmartObject("Select", _Panel.ThePanel.SmartObjects[(int)SgId.CameraSelect]);
-                _dpad = _Panel.AddSmartObject("Dpad", _Panel.ThePanel.SmartObjects[(int)SgId.CameraDpad]);
-                _preset = _Panel.AddSmartObject("CameraPreset", _Panel.ThePanel.SmartObjects[(int)SgId.CameraPreset]);
+                _select = _panel.AddSmartObject("Select", _panel.ThePanel.SmartObjects[(int)SgId.CameraSelect]);
+                _dpad = _panel.AddSmartObject("Dpad", _panel.ThePanel.SmartObjects[(int)SgId.CameraDpad]);
+                _preset = _panel.AddSmartObject("CameraPreset", _panel.ThePanel.SmartObjects[(int)SgId.CameraPreset]);
 
                 // add handler
                 _select.OnSmartObjectSignalChange += OnSelect;
@@ -257,7 +320,7 @@ namespace NexusVtp
             if (e.Sig.BoolValue)
             {
                 this._saveMode = !this._saveMode;
-                _Panel.SetBoolean((int)Btn.Save, this._saveMode);
+                _panel.SetBoolean((int)Btn.Save, this._saveMode);
             }
         }
 
@@ -401,7 +464,7 @@ namespace NexusVtp
         private void OnTimerSaveTimeoutElapsed(object sender, ElapsedEventArgs e)
         {
             _saveMode = false;
-            _Panel.SetBoolean((int)Btn.Save, this._saveMode);
+            _panel.SetBoolean((int)Btn.Save, this._saveMode);
         }
 
         /// <summary>
@@ -451,7 +514,7 @@ namespace NexusVtp
         private void ResetSaveMode()
         {
             _saveMode = false;
-            _Panel.SetBoolean((int)Btn.Save, this._saveMode);
+            _panel.SetBoolean((int)Btn.Save, this._saveMode);
             _timerSaveTimeout.Stop();
         }   
 
@@ -527,7 +590,7 @@ namespace NexusVtp
         /// </summary>
         private void SetAutoFocus()
         {
-            _Panel.SetBoolean((uint)Btn.FocusAuto, _autoFocus);
+            _panel.SetBoolean((uint)Btn.FocusAuto, _autoFocus);
         }
         /// <summary>
         /// Updates preset labels on the panel
@@ -561,6 +624,11 @@ namespace NexusVtp
             SetItemVisibleByDictionary(_preset, _visiblePreset);
         }
 
+        /// <summary>
+        /// Handles changes to system settings, particularly camera preset name configurations
+        /// </summary>
+        /// <param name="FriendlyName">The friendly name of the camera that the settings apply to</param>
+        /// <param name="Settings">The settings object containing configuration changes</param>
         private void System_OnSettingChanged(string FriendlyName, INexusSettings Settings)
         {
             if (Settings is Settings.CameraPresetNames cameraPresetNames)
@@ -672,6 +740,9 @@ namespace NexusVtp
                 debugMessage.TrimEnd('\n'));
         }
 
+        /// <summary>
+        /// Prints the current preset labels for the selected camera to debug output
+        /// </summary>
         private void DebugPrintCurrentPresets()
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name}");

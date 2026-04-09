@@ -102,6 +102,9 @@ namespace NexusVtp
                 this._timerTimeUpdate.Elapsed += new ElapsedEventHandler(this.OnTimerTimeUpdate);
                 this._timerTimeUpdate.Start();
 
+                //TODO is there a way to set program ID tag
+                //InitialParametersClass.SystemSettings
+
             }
             catch (Exception e)
             {

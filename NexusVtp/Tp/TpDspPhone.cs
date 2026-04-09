@@ -1,15 +1,13 @@
 ﻿using Crestron.SimplSharpPro;
-using Crestron.SimplSharpPro.UI;
 using Forte.SSPro.UI.Helper.Library.UI;
-using Independentsoft.Exchange;
 using Nexus.Framework.Services;
 using Nexus.Qsc.Qsys.Driver;
 using Nexus.Utils;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using static NexusVtp.SmartGraphics;
 using System.Timers;
+using static NexusVtp.SmartGraphics;
 
 namespace NexusVtp
 {
@@ -18,7 +16,10 @@ namespace NexusVtp
     /// </summary>
     public class TpDspPhone
     {
-        private const uint timeDeleteHold = 1;
+        /// <summary>
+        /// Time in seconds before delete action triggers during hold
+        /// </summary>
+        private const uint TimeDeleteHold = 1;
 
         /// <summary>
         /// Reference to the QSC Q-SYS DSP driver
@@ -43,6 +44,9 @@ namespace NexusVtp
         /// </summary>
         private static bool _subscribed = false;
 
+        /// <summary>
+        /// Timer for detecting delete button hold duration
+        /// </summary>
         private Timer _timerDeleteHeld;
 
         /// <summary>
@@ -65,11 +69,11 @@ namespace NexusVtp
         };
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="TpDsp"/> class.
+        /// Initializes a new instance of the <see cref="TpDspPhone"/> class.
         /// </summary>
-        /// <param name="panel"> The wrapped tp. </param>
-        /// <param name="panelName"> Description of the panel for debugging. </param>
-        /// <param name="dsp"> The dsp. </param>
+        /// <param name="panel">The touchpanel interface wrapper</param>
+        /// <param name="panelName">Description of the panel for debugging</param>
+        /// <param name="dsp">The QSC Q-SYS DSP driver instance</param>
         public TpDspPhone(Panel panel, string panelName, QscQsysDriver dsp)
         {
             this._panel = panel;
@@ -79,13 +83,16 @@ namespace NexusVtp
         }
 
         /// <summary>
-        /// Button join numbers for DSP controls
+        /// Button join numbers for phone call control
         /// </summary>
         enum Btn
         {
+            /// <summary>Disconnect call button</summary>
             Disconnect = 800,
+            /// <summary>Connect call button</summary>
             Connect = 801,
-            Delete  = 802,
+            /// <summary>Delete/backspace button</summary>
+            Delete = 802,
         }
 
         /// <summary>
@@ -96,10 +103,10 @@ namespace NexusVtp
             try
             {
                 // timers
-                this._timerDeleteHeld = new Timer(timeDeleteHold * 1000);
+                this._timerDeleteHeld = new Timer(TimeDeleteHold * 1000);
 
                 // timer event handlers
-                this._timerDeleteHeld.Elapsed += new ElapsedEventHandler(this.OnTimerDeleteHeld);
+                this._timerDeleteHeld.Elapsed += OnTimerDeleteHeld;
 
                 // buttons - joins
                 var bgCallControls = _panel.AddButtonGroup("PhoneCallControls", (uint)Btn.Disconnect, (uint)Btn.Delete);
@@ -119,10 +126,10 @@ namespace NexusVtp
 
         // event handlers - button objects
         /// <summary>
-        /// Handles volume and mute button events by routing to appropriate handler methods
+        /// Handles phone call control button events (disconnect, connect, delete)
         /// </summary>
         /// <param name="o">Event sender</param>
-        /// <param name="e">Button group event arguments containing signal information</param>
+        /// <param name="ea">Button group event arguments containing signal information</param>
         private void OnBgCallControls(object o, ButtonGroupEventArgs ea)
         {
             int num = (int)ea.Sig.Number;
@@ -157,7 +164,7 @@ namespace NexusVtp
         }
 
         /// <summary>
-        /// Handles Smart Object volume button events by routing to appropriate handler methods
+        /// Handles keypad button presses and maps them to character input
         /// </summary>
         /// <param name="o">Event sender</param>
         /// <param name="ea">Smart Object event arguments containing signal information</param>
@@ -183,7 +190,11 @@ namespace NexusVtp
             }
         }
 
-        // event handlers - Timers
+        /// <summary>
+        /// Handles delete button hold timer elapsed event
+        /// </summary>
+        /// <param name="o">Event sender (Timer object)</param>
+        /// <param name="e">Elapsed event arguments</param>
         private void OnTimerDeleteHeld(object o, ElapsedEventArgs e)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} Delete held");

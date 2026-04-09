@@ -1,4 +1,5 @@
 ﻿using Crestron.SimplSharpPro;
+using Crestron.SimplSharpPro.DeviceSupport;
 using Forte.SSPro.UI.Helper.Library.UI;
 using Nexus.Framework.Services;
 using Nexus.Qsc.Qsys.Driver;
@@ -31,6 +32,8 @@ namespace NexusVtp
         /// Name of the Phone volume control in the DSP
         /// </summary>
         private const string NamePhone = "Phone";
+
+        private const string SrlPress = "press";
 
         /// <summary>
         /// Reference to the QSC Q-SYS DSP driver
@@ -91,7 +94,7 @@ namespace NexusVtp
         /// <summary>
         /// Structure to hold feedback cue numbers for Smart Object updates
         /// </summary>
-        private class FeedbackSg
+        private class FeedbackSrl
         {
             /// <summary>
             /// Gets or sets the Smart Object ID
@@ -124,22 +127,22 @@ namespace NexusVtp
         /// <summary>
         /// Maps button join numbers to their corresponding action handlers
         /// </summary>
-        private Dictionary<int, Action<ButtonGroupEventArgs>> _mapJoinToAction;
+        private Dictionary<int, Action<ButtonGroupEventArgs>> _mapJoinToAction = new Dictionary<int, Action<ButtonGroupEventArgs>>();
 
         /// <summary>
-        /// Maps Smart Object ID and cue number tuples to their corresponding action handlers
+        /// Maps Smart Object ID and button index tuples to their corresponding action handlers
         /// </summary>
-        private Dictionary<(SgId Id, SgCueVolume Cue), Action<SmartObjectEventArgs>> _mapSgToAction;
+        private Dictionary<(SgId Id, uint press), Action<SmartObjectEventArgs>> _mapSrlPressNameToAction = new Dictionary<(SgId id, uint press), Action<SmartObjectEventArgs>>();
 
         /// <summary>
         /// Maps volume control names to their feedback join numbers
         /// </summary>
-        private Dictionary<string, FeedbackJoins> _mapNameToFeedbackJoins;
+        private Dictionary<string, FeedbackJoins> _mapNameToFeedbackJoins = new Dictionary<string, FeedbackJoins>();
 
         /// <summary>
-        /// Maps volume control names to their feedback Smart Object cue numbers
+        /// Maps volume control names to their feedback Smart Object
         /// </summary>
-        private Dictionary<string, FeedbackSg> _mapNameToFeedbackSg;
+        private Dictionary<string, FeedbackSrl> _mapNameToFeedbackSrl = new Dictionary<string, FeedbackSrl>();
 
         /// <summary>
         /// Button join numbers for DSP controls
@@ -164,70 +167,57 @@ namespace NexusVtp
                 btnPrivacy.OnPanelButtonGroupChange += OnBgVolumeButton;
 
                 // THIS MAPS A JOIN TO AN ACTION, THE ACTION WILL CONTROL THE DEVICE
-                _mapJoinToAction = new Dictionary<int, Action<ButtonGroupEventArgs>>();
-
-                // Privacy
                 _mapJoinToAction.Add((int)Btn.Privacy, (e) => BgHandleMute(e, NamePrivacy));
 
                 // THIS MAPS NAME THAT THE DEVICE GIVES US TO THE MUTE AND LEVEL JOINS
-                // Initialize feedback mapping
-                _mapNameToFeedbackJoins = new Dictionary<string, FeedbackJoins>();
-
-                // Privacy feedback
                 _mapNameToFeedbackJoins.Add(NamePrivacy, new FeedbackJoins
                 {
                     Mute = (uint)Btn.Privacy,
                     Level = 0  // No level for privacy
                 });
 
+                // add smart object 
                 // THIS ADDS THE SMART OBJECTS TO THE PANEL AND SUBSCRIBES TO THEIR SIGNAL CHANGES
                 _volumeMaster = _panel.AddSmartObject("VolumeMaster", _panel.ThePanel.SmartObjects[(int)SgId.VolumeMaster]);
                 _volumeMixer = _panel.AddSmartObject("VolumeMixer", _panel.ThePanel.SmartObjects[(int)SgId.VolumeMixer]);
+
+                // add handler
                 _volumeMaster.OnSmartObjectSignalChange += OnSgVolumeButton;
                 _volumeMixer.OnSmartObjectSignalChange += OnSgVolumeButton;
 
-                // initialize handlers lookup
-                // THIS MAPS AN ID AND CUE TO AN ACTION, THE ACTION WILL CONTROL THE DEVICE
-                _mapSgToAction = new Dictionary<(SgId id, SgCueVolume cue), Action<SmartObjectEventArgs>>
-                {
-                    [(SgId.VolumeMaster, SgCueVolume.MasterUp)] = ea => SgHandleUp(ea, NameMaster),
-                    [(SgId.VolumeMaster, SgCueVolume.MasterDown)] = ea => SgHandleDown(ea, NameMaster),
-                    [(SgId.VolumeMaster, SgCueVolume.MasterMute)] = ea => SgHandleMute(ea, NameMaster),
+                // THIS MAPS AN ID AND BUTTON PRESS TO AN ACTION, THE ACTION WILL CONTROL THE DEVICE
+                _mapSrlPressNameToAction.Add((SgId.VolumeMaster, 1), ea => SgHandleUp(ea, NameMaster));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMaster, 2), ea => SgHandleDown(ea, NameMaster));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMaster, 3), ea => SgHandleMute(ea, NameMaster));
 
-                    [(SgId.VolumeMixer, SgCueVolume.ProgramUp)] = ea => SgHandleUp(ea, NameProgram),
-                    [(SgId.VolumeMixer, SgCueVolume.ProgramDown)] = ea => SgHandleDown(ea, NameProgram),
-                    [(SgId.VolumeMixer, SgCueVolume.ProgramMute)] = ea => SgHandleMute(ea, NameProgram),
-                    [(SgId.VolumeMixer, SgCueVolume.PhoneUp)] = ea => SgHandleUp(ea, NamePhone),
-                    [(SgId.VolumeMixer, SgCueVolume.PhoneDown)] = ea => SgHandleDown(ea, NamePhone),
-                    [(SgId.VolumeMixer, SgCueVolume.PhoneMute)] = ea => SgHandleMute(ea, NamePhone),
-                };
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 1), ea => SgHandleUp(ea, NameProgram));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 2), ea => SgHandleDown(ea, NameProgram));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 3), ea => SgHandleMute(ea, NameProgram));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 4), ea => SgHandleUp(ea, NamePhone));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 5), ea => SgHandleDown(ea, NamePhone));
+                _mapSrlPressNameToAction.Add((SgId.VolumeMixer, 6), ea => SgHandleMute(ea, NamePhone));
 
-                // THE MAPS THE NAME THAT THE DEVICE GIVES US TO THE SMART OBJECT ID, MUTE CUE AND LEVEL CUE
-                // Initialize feedback mapping
-                _mapNameToFeedbackSg = new Dictionary<string, FeedbackSg>();
-
-                // Program volume feedback
-                _mapNameToFeedbackSg.Add(NameMaster, new FeedbackSg
+                // THIS MAPS THE NAME THAT THE DEVICE GIVES US TO THE SMART OBJECT ID, MUTE AND LEVEL
+                _mapNameToFeedbackSrl.Add(NameMaster, new FeedbackSrl
                 {
                     Id = (uint)SgId.VolumeMaster,
-                    Mute = (uint)SgCueVolume.MasterMute,
-                    Level = (uint)SgCueVolume.MasterLevel
+                    Mute = 3,
+                    Level = 1,
                 });
 
-                _mapNameToFeedbackSg.Add(NameProgram, new FeedbackSg
+                _mapNameToFeedbackSrl.Add(NameProgram, new FeedbackSrl
                 {
                     Id = (uint)SgId.VolumeMixer,
-                    Mute = (uint)SgCueVolume.ProgramMute,
-                    Level = (uint)SgCueVolume.ProgramLevel
+                    Mute = 3,
+                    Level = 1,
                 });
 
-                _mapNameToFeedbackSg.Add(NamePhone, new FeedbackSg
+                _mapNameToFeedbackSrl.Add(NamePhone, new FeedbackSrl
                 {
                     Id = (uint)SgId.VolumeMixer,
-                    Mute = (uint)SgCueVolume.PhoneMute,
-                    Level = (uint)SgCueVolume.PhoneLevel
+                    Mute = 6,
+                    Level = 2,
                 });
-
 
                 // THIS SUBSCRIBES TO THE DEVICE EVENTS.
                 // THE SUBSCRIBE FIELD IS STATIC, SO THAT ONLY A SINGLE SUBSCRIPTION IS MADE FOR ALL INSTANCES OF THIS CLASS.
@@ -286,16 +276,36 @@ namespace NexusVtp
         /// <param name="ea">Smart Object event arguments containing signal information</param>
         private void OnSgVolumeButton(object o, SmartObjectEventArgs ea)
         {
+            //THIS IS A SUBPAGE REFERENCE LIST, SO THE NAME IS DIFFERENT THAN OTHER SMART OBJECTS!!!!!
+            if (!(ea.Sig.Name.Contains(SrlPress)))
+            {
+                return;
+            }
+
             NexusDebugSmartObjectEvent(o, ea);
             var id = (SgId)ea.SmartObjectArgs.ID;
-            var num = (SgCueVolume)ea.Sig.Number;
-            if (_mapSgToAction != null && _mapSgToAction.TryGetValue((id, num), out var handler))
+
+            // Extract the numeric suffix from "press1", "press2", etc.
+            if (!uint.TryParse(ea.Sig.Name.Substring(SrlPress.Length), out var press))
+            {
+                NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Warning,
+                    $"{_panelName} {MethodBase.GetCurrentMethod().Name} Failed to parse index from {ea.Sig.Name}");
+                return;
+            }
+
+            if (_mapSrlPressNameToAction == null)
+            {
+                NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Warning, $"{_panelName} {MethodBase.GetCurrentMethod().Name} _mapSrlPressNameToAction == null");
+                return;
+            }
+
+            if (_mapSrlPressNameToAction.TryGetValue((id, press), out var handler))
             {
                 handler?.Invoke(ea);
             }
             else
             {
-                NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Warning, $"{_panelName} {MethodBase.GetCurrentMethod().Name} Unhandled mapping for id={id} num={num}");
+                NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Warning, $"{_panelName} {MethodBase.GetCurrentMethod().Name} Unhandled mapping for id={id} press={press}");
             }
         }
 
@@ -351,7 +361,6 @@ namespace NexusVtp
         private void SgHandleUp(SmartObjectEventArgs ea, string name)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(ea.Sig.BoolValue ? "pressed" : "released")}");
-            //_panel.SetBoolean((uint)ea.Sig.Number, ea.Sig.BoolValue);
             if (ea.Sig.BoolValue) UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
             if (ea.Sig.BoolValue) vol?.LevelUp(); else vol?.LevelStop();
@@ -365,7 +374,6 @@ namespace NexusVtp
         private void SgHandleDown(SmartObjectEventArgs ea, string name)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(ea.Sig.BoolValue ? "pressed" : "released")}");
-            //_panel.SetBoolean((uint)e.Sig.Number, ea.Sig.BoolValue);
             if (ea.Sig.BoolValue) UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
             if (ea.Sig.BoolValue) vol?.LevelDown(); else vol?.LevelStop();
@@ -392,7 +400,7 @@ namespace NexusVtp
         /// </summary>
         private void SubscribeSmartObjectFeedback()
         {
-            foreach (var mapping in _mapNameToFeedbackSg)
+            foreach (var mapping in _mapNameToFeedbackSrl)
             {
                 var name = mapping.Key;
                 var feedback = mapping.Value;
@@ -410,14 +418,12 @@ namespace NexusVtp
                     handler?.Invoke(name, muted);
                 };
 
-                if (feedback.Level > 0)
+
+                vol.OnLevelChange += (level) =>
                 {
-                    vol.OnLevelChange += (level) =>
-                    {
-                        var handler = LevelChanged;
-                        handler?.Invoke(name, level);
-                    };
-                }
+                    var handler = LevelChanged;
+                    handler?.Invoke(name, level);
+                };
 
                 NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug,
                     $"Subscribed smart object handlers for '{name}'");
@@ -471,7 +477,9 @@ namespace NexusVtp
         private void OnMuteChangedSg(string name, bool muted)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{name} muted {muted}");
-            if (!_mapNameToFeedbackSg.TryGetValue(name, out var feedback)) return;
+            if (!_mapNameToFeedbackSrl.TryGetValue(name, out var feedback)) return;
+
+            NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"mapped {name}");
 
             ExtendedSmartObject smartObj = null;
             if (feedback.Id == (uint)SgId.VolumeMaster)
@@ -479,7 +487,7 @@ namespace NexusVtp
             else if (feedback.Id == (uint)SgId.VolumeMixer)
                 smartObj = _volumeMixer;
 
-            smartObj?.SetBoolean(feedback.Mute, muted);
+            SetSrlBooleanByName(smartObj, feedback.Mute, muted);
         }
 
         /// <summary>
@@ -503,7 +511,7 @@ namespace NexusVtp
         private void OnLevelChangedSg(string name, int level)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{name} level {level}");
-            if (!_mapNameToFeedbackSg.TryGetValue(name, out var feedback)) return;
+            if (!_mapNameToFeedbackSrl.TryGetValue(name, out var feedback)) return;
 
             ExtendedSmartObject smartObj = null;
             if (feedback.Id == (uint)SgId.VolumeMaster)
@@ -511,7 +519,7 @@ namespace NexusVtp
             else if (feedback.Id == (uint)SgId.VolumeMixer)
                 smartObj = _volumeMixer;
 
-            smartObj?.SetAnalog(feedback.Level, (short)level);
+            SetSrlAnalogByName(smartObj, feedback.Level, (ushort)level);
         }
 
         /// <summary>

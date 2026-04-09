@@ -40,7 +40,6 @@ namespace NexusVtp
             Initialize();
         }
 
-        //private methods
         /// <summary>
         /// Initializes smart objects and subscribes to events.
         /// </summary>
@@ -59,10 +58,6 @@ namespace NexusVtp
             }
         }
 
-
-        // event handlers - button objects
-
-        // event handlers - Smart objects
         /// <summary>
         /// Handles lighting preset selection from the smart object.
         /// </summary>

@@ -19,23 +19,6 @@ namespace NexusVtp
     public static class SmartGraphics
     {
         /// <summary>
-        /// Base join number for item cues when mapping using a loop
-        /// </summary>
-        public const int CueItemBase = 10;
-        /// <summary>
-        /// Base join number for enable item cues when mapping using a loop
-        /// </summary>
-        public const int EnableCueItemBase = 2010;
-        /// <summary>
-        /// Base join number for icon item cues when mapping using a loop
-        /// </summary>
-        public const int IconCueItemBase = 2010;
-        /// <summary>
-        /// Base join number for visible item cues when mapping using a loop
-        /// </summary>
-        public const int VisibleCueItemBase = 4010;
-
-        /// <summary>
         /// Smart Graphics IDs for various UI components and controls
         /// </summary>
         public enum SgId
@@ -54,64 +37,6 @@ namespace NexusVtp
             CameraDpad = 15,
             CameraPreset = 16,
             LightsPreset = 17,
-        }
-
-        /// <summary>
-        /// Smart Graphics cue join numbers for list items (use these when mapping with a string for a key)
-        /// </summary>
-        public enum SgCue
-        {
-            Item1 = 11,
-            Item2 = 12,
-            Item3 = 13,
-            Item4 = 14,
-            Item5 = 15,
-            Item6 = 16,
-            Item7 = 17,
-            Item8 = 18,
-            Item9 = 19,
-
-            EnableItem1 = 2011,
-            EnableItem2 = 2012,
-            EnableItem3 = 2013,
-            EnableItem4 = 2014,
-            EnableItem5 = 2015,
-            EnableItem6 = 2016,
-            EnableItem7 = 2017,
-            EnableItem8 = 2018,
-            EnableItem9 = 2019,
-
-            VisibleItem1 = 4011,
-            VisibleItem2 = 4012,
-            VisibleItem3 = 4013,
-            VisibleItem4 = 4014,
-            VisibleItem5 = 4015,
-            VisibleItem6 = 4016,
-            VisibleItem7 = 4017,
-            VisibleItem8 = 4018,
-            VisibleItem9 = 4019,
-        }
-
-        /// <summary>
-        /// Smart Graphics cue join numbers for volume controls (subpage reference list)
-        /// </summary>
-        public enum SgCueVolume
-        {
-            MasterUp = 4011,
-            MasterDown = 4012,
-            MasterMute = 4013,
-
-            ProgramUp = 4011,
-            ProgramDown = 4012,
-            ProgramMute = 4013,
-
-            PhoneUp = 4014,
-            PhoneDown = 4015,
-            PhoneMute = 4016,
-
-            MasterLevel = 11,
-            ProgramLevel = 11,
-            PhoneLevel = 12,
         }
 
         /// <summary>
@@ -259,6 +184,32 @@ namespace NexusVtp
             {
                 SetItemVisible(smartObject, kv.Key, kv.Value);
             }
+        }
+
+        /// <summary>
+        /// Sets a boolean signal for a Smart Object using a dynamic signal name.
+        /// </summary>
+        /// <param name="smartObject">The Smart Object to update</param>
+        /// <param name="signalName">The exact name of the boolean signal to set</param>
+        /// <param name="value">The boolean value to set</param>
+        public static void SetSrlBooleanByName(ExtendedSmartObject smartObject, uint  number, bool value)
+        {
+            if (smartObject is null) return;
+            var signalName = $"fb{number}";
+            smartObject.SmartObject.BooleanInput[signalName].BoolValue = value;
+        }
+
+        /// <summary>
+        /// Sets an analog (UShort) signal for a Smart Object using a dynamic signal name.
+        /// </summary>
+        /// <param name="smartObject">The Smart Object to update</param>
+        /// <param name="signalName">The exact name of the analog signal to set</param>
+        /// <param name="value">The ushort value to set</param>
+        public static void SetSrlAnalogByName(ExtendedSmartObject smartObject, uint number, ushort value)
+        {
+            if (smartObject is null) return;
+            var signalName = $"an_fb{number}";
+            smartObject.SmartObject.UShortInput[signalName].UShortValue = value;
         }
     }
 }
