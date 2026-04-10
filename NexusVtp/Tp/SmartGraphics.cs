@@ -98,6 +98,18 @@ namespace NexusVtp
         }
 
         /// <summary>
+        /// Scroll to a Smart Object list item.
+        /// </summary>
+        public static void ScrollToItem(ExtendedSmartObject smartObject, uint item)
+        {
+            var signalName = "Scroll To Item";
+            //NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{MethodBase.GetCurrentMethod().Name} {signalName} {item}");
+            // this seemed to require a value change to work reliably, so always sent zero first before the desired value
+            smartObject.SmartObject.UShortInput[signalName].UShortValue = 0;
+            smartObject.SmartObject.UShortInput[signalName].UShortValue = (ushort)item;
+        }
+
+        /// <summary>
         /// Sets the enabled state for a single Smart Object list item.
         /// </summary>
         public static void SetItemEnabled(ExtendedSmartObject smartObject, uint itemNumber, bool value)
@@ -210,6 +222,13 @@ namespace NexusVtp
             if (smartObject is null) return;
             var signalName = $"an_fb{number}";
             smartObject.SmartObject.UShortInput[signalName].UShortValue = value;
+        }
+
+        public static void SetSrlTestByName(ExtendedSmartObject smartObject, uint number, string value)
+        {
+            if (smartObject is null) return;
+            var signalName = $"text-o{number}";
+            smartObject.SmartObject.StringInput[signalName].StringValue = value;
         }
     }
 }

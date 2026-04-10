@@ -1,9 +1,10 @@
 ﻿using Crestron.SimplSharpPro;
-using Crestron.SimplSharpPro.DeviceSupport;
 using Forte.SSPro.UI.Helper.Library.UI;
+using Nexus.Driver.Architecture.Configuration;
 using Nexus.Framework.Services;
 using Nexus.Qsc.Qsys.Driver;
 using Nexus.Utils;
+using NexusCommon;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -32,9 +33,10 @@ namespace NexusVtp
         /// Name of the Phone volume control in the DSP
         /// </summary>
         private const string NamePhone = "Phone";
-
+        /// <summary>
+        /// Name of a press event that we receive from a subpage reference list, will be appended with a number to indicate which button was pressed (e.g. "press1", "press2", etc.)
+        /// </summary>
         private const string SrlPress = "press";
-
         /// <summary>
         /// Reference to the QSC Q-SYS DSP driver
         /// </summary>
@@ -159,6 +161,7 @@ namespace NexusVtp
         {
             try
             {
+                NexusServiceManager.System.OnSettingChanged += System_OnSettingChanged;
                 //THIS CONTAINS BOTH JOIN-BASED AND SMART OBJECT-BASED CONTROL AND FEEDBACK TO DEMONSTRATE BOTH METHODS.
                 //IT CAN BE USED AS A REFERENCE FOR EITHER APPROACH OR BOTH.
                 //RESOURCES ARE KEPT SEPARATE FOR EITHER APPROACH TO MAKE IT CLEAR WHAT RELATES TO WHAT OR SO THAT WHAT IS NOT NEEDED IN THE PROJECT CAN BE EASILY REMOVED IF DESIRED.
@@ -282,6 +285,9 @@ namespace NexusVtp
                 return;
             }
 
+            //reset the timer to keep the page visible while the user is interacting with the DSP controls
+            UserActivity?.Invoke();
+
             NexusDebugSmartObjectEvent(o, ea);
             var id = (SgId)ea.SmartObjectArgs.ID;
 
@@ -318,7 +324,7 @@ namespace NexusVtp
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(e.Sig.BoolValue ? "pressed" : "released")}");
             _panel.SetBoolean((uint)e.Sig.Number, e.Sig.BoolValue);
-            if (e.Sig.BoolValue) UserActivity?.Invoke();
+            UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
             if (e.Sig.BoolValue) vol?.LevelUp(); else vol?.LevelStop();
         }
@@ -332,9 +338,9 @@ namespace NexusVtp
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(e.Sig.BoolValue ? "pressed" : "released")}");
             _panel.SetBoolean((uint)e.Sig.Number, e.Sig.BoolValue);
-            if (e.Sig.BoolValue) UserActivity?.Invoke();
+            UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
-            if (e.Sig.BoolValue) vol?.LevelDown(); else vol?.LevelStop();
+            if (e.Sig.BoolValue)vol?.LevelDown(); else vol?.LevelStop();
         }
 
         /// <summary>
@@ -361,7 +367,7 @@ namespace NexusVtp
         private void SgHandleUp(SmartObjectEventArgs ea, string name)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(ea.Sig.BoolValue ? "pressed" : "released")}");
-            if (ea.Sig.BoolValue) UserActivity?.Invoke();
+            //if (ea.Sig.BoolValue) UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
             if (ea.Sig.BoolValue) vol?.LevelUp(); else vol?.LevelStop();
         }
@@ -374,7 +380,7 @@ namespace NexusVtp
         private void SgHandleDown(SmartObjectEventArgs ea, string name)
         {
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(ea.Sig.BoolValue ? "pressed" : "released")}");
-            if (ea.Sig.BoolValue) UserActivity?.Invoke();
+            //if (ea.Sig.BoolValue) UserActivity?.Invoke();
             var vol = _dsp.GetVolume(name);
             if (ea.Sig.BoolValue) vol?.LevelDown(); else vol?.LevelStop();
         }
@@ -389,7 +395,7 @@ namespace NexusVtp
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {name} {(ea.Sig.BoolValue ? "pressed" : "released")}");
             if (ea.Sig.BoolValue)
             {
-                UserActivity?.Invoke();
+                //UserActivity?.Invoke();
                 var vol = _dsp.GetVolume(name);
                 vol.MuteToggle();
             }
@@ -535,6 +541,21 @@ namespace NexusVtp
             if (feedback.Level > 0)
             {
                 _panel.SetAnalog(feedback.Level, (short)level);
+            }
+        }
+
+        /// <summary>
+        /// Handles system settings changes for room information and routing group names
+        /// </summary>
+        /// <param name="FriendlyName">The friendly name of the setting</param>
+        /// <param name="Settings">The settings object containing updated values</param>
+        private void System_OnSettingChanged(string FriendlyName, INexusSettings Settings)
+        {
+            if (Settings is Settings.VolumeNames volumeNames)
+            {
+                SetSrlTestByName(_volumeMaster, 1, volumeNames.Master);
+                SetSrlTestByName(_volumeMixer, 1, volumeNames.Program);
+                SetSrlTestByName(_volumeMixer, 2, volumeNames.Phone);
             }
         }
     }

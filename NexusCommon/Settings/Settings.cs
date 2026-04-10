@@ -181,6 +181,21 @@ namespace NexusCommon
             public string Destination04 { get; set; } = "Destination 04";
         }
 
+        [NexusComponentSettings("Volume Names", typeof(NexusSystemDiagnostics), "AddSystemConfig")]
+        public class VolumeNames : INexusSettings
+        {
+            public string Name { get; set; }
+
+            [NexusStringFieldAttribute("Master")]
+            public string Master { get; set; } = "Master";
+
+            [NexusStringFieldAttribute("Program")]
+            public string Program { get; set; } = "Program";
+
+            [NexusStringFieldAttribute("Phone")]
+            public string Phone { get; set; } = "Phone";
+        }
+
         //This example has all the attributes
         [NexusComponentSettings("Lighting Presets", typeof(NexusSystemDiagnostics), "AddSystemConfig")]
         public class LightingPresets : INexusSettings

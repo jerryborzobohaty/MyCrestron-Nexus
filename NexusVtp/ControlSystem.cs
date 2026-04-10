@@ -1,22 +1,14 @@
 using Crestron.SimplSharp;                              // For Basic SIMPL# Classes
+using Crestron.SimplSharp.CrestronDataStore;
 using Crestron.SimplSharp.CrestronIO;
 using Crestron.SimplSharpPro;                       	// For Basic SIMPL#Pro classes
 using Crestron.SimplSharpPro.CrestronThread;        	// For Threading
-using Crestron.SimplSharpPro.DeviceSupport;         	// For Generic Device Support
-using Crestron.SimplSharpPro.Diagnostics;		    	// For System Monitor Access
 using Crestron.SimplSharpPro.UI;
-using Forte.SSPro.UI;
 using Forte.SSPro.UI.Helper.Library.UI;
-using Independentsoft.Exchange;
-using Nexus.Driver.Architecture;
 using Nexus.Driver.Architecture.Components;
-using Nexus.Driver.Architecture.Configuration;
-using Nexus.Driver.Architecture.Devices;
 using Nexus.Driver.Architecture.Enumerations;
 using Nexus.Framework.Services;
-using Nexus.Framework.Services.Services;
 using Nexus.Qsc.Qsys.Driver;
-using Nexus.Qsc.Qsys.Driver.Components;
 using Nexus.Qsc.Qsys.Driver.Settings;
 using Nexus.Utils;
 using Nexus.Vaddio.RoboshotIP.Driver;
@@ -28,21 +20,66 @@ using System.Timers;
 
 namespace NexusVtp
 {
+    /// <summary>
+    /// Main control system class that initializes and manages all devices, drivers, and touchpanel interfaces
+    /// </summary>
     public class ControlSystem : CrestronControlSystem
     {
+        /// <summary>
+        /// TS770 touchpanel device
+        /// </summary>
         Ts770 _ts770;
+        /// <summary>
+        /// Touchpanel interface wrapper
+        /// </summary>
         Panel _panel;
+        /// <summary>
+        /// QSC Q-SYS DSP driver for audio routing and volume control
+        /// </summary>
         QscQsysDriver _dsp;
+        /// <summary>
+        /// First Vaddio RoboShot camera for PTZ control
+        /// </summary>
         VaddioRoboshotIP _camera01;
+        /// <summary>
+        /// Second Vaddio RoboShot camera for PTZ control
+        /// </summary>
         VaddioRoboshotIP _camera02;
+        /// <summary>
+        /// Main touchpanel controller for navigation and system functions
+        /// </summary>
         TpMain tpMain;
+        /// <summary>
+        /// DSP volume control handler for touchpanel
+        /// </summary>
         TpDsp tpDsp;
+        /// <summary>
+        /// Phone call DSP control handler for touchpanel
+        /// </summary>
         TpDspPhone tpDspPhone;
+        /// <summary>
+        /// Camera control handler for touchpanel
+        /// </summary>
         TpCamera tpCamera;
+        /// <summary>
+        /// Audio/video matrix routing handler for touchpanel
+        /// </summary>
         TpMatrix tpMatrix;
+        /// <summary>
+        /// Lighting control handler for touchpanel
+        /// </summary>
         TpLights tpLights;
+        /// <summary>
+        /// Progress tracking for long-running operations
+        /// </summary>
         Progress _progress;
+        /// <summary>
+        /// Macro execution engine for system-wide actions
+        /// </summary>
         Macro _macro;
+        /// <summary>
+        /// Timer for periodic time display updates on touchpanel
+        /// </summary>
         Timer _timerTimeUpdate;
 
         /// <summary>
@@ -79,8 +116,10 @@ namespace NexusVtp
         }
 
         /// <summary>
-        /// InitializeSystem - this method gets called after the constructor 
-        /// has finished. 
+        /// Initializes the control system after the constructor has completed.
+        /// This method orchestrates the initialization sequence for all devices, drivers, and touchpanel interfaces.
+        /// The sequence is: cameras → display → DSP → macros → progress tracking → touchpanels → Nexus configuration.
+        /// Wires up the Crestron DataStore and starts the periodic time update timer for the touchpanel header.
         /// </summary>
         public override async void InitializeSystem()
         {
@@ -97,7 +136,6 @@ namespace NexusVtp
                 ConfigNexus();
                 _progress.RunAction("Initialize");  
 
-
                 // for the clock so it can wait
                 this._timerTimeUpdate.Elapsed += new ElapsedEventHandler(this.OnTimerTimeUpdate);
                 this._timerTimeUpdate.Start();
@@ -105,14 +143,28 @@ namespace NexusVtp
                 //TODO is there a way to set program ID tag
                 //InitialParametersClass.SystemSettings
 
+                ////datastore - 
+                var initResult = CrestronDataStoreStatic.InitCrestronDataStore();
+
+                if (initResult != CrestronDataStore.CDS_ERROR.CDS_SUCCESS)
+                {
+                    ErrorLog.Error("DataStore init failed: {0}", initResult);
+                    NexusServiceManager.System.Log(Nexus.Driver.Architecture.Enumerations.LoggingLevels.Exceptions, $"{MethodBase.GetCurrentMethod().Name}: DataStore init failed: {initResult}");
+                    return;
+                }
             }
             catch (Exception e)
             {
                 ErrorLog.Error($"{MethodBase.GetCurrentMethod().Name}: {0}", e.Message);
-                NexusServiceManager.System.Log(Nexus.Driver.Architecture.Enumerations.LoggingLevels.Exceptions, $"{MethodBase.GetCurrentMethod().Name}: {e}");
+                NexusServiceManager.System.Log(Nexus.Driver.Architecture.Enumerations.LoggingLevels.Exceptions, $"{MethodBase.GetCurrentMethod().Name}: {e.Message}");
             }
         }
 
+        /// <summary>
+        /// Configures Vaddio RoboShot camera instances and registers them in the camera dictionary.
+        /// Creates two PTZ camera instances, registers their connection change events, and populates the camera collection
+        /// for use by the camera control touchpanel.
+        /// </summary>
         private void ConfigCamera()
         {
             try
@@ -152,6 +204,10 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures display driver for video output control.
+        /// Currently stubbed for future display driver implementation.
+        /// </summary>
         private void ConfigDisplay()
         {
             try
@@ -165,6 +221,11 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures the QSC Q-SYS DSP driver for audio routing and volume control.
+        /// Sets up the DSP connection with auto-reconnect enabled, registers connection change events,
+        /// and configures four volume gain controls (Master, Program, Phone, Privacy).
+        /// </summary>
         private void ConfigDsp()
         {
             // IF EMULATING, ALLOW QSYS DESIGNER THROUGH FIREWALL
@@ -191,6 +252,11 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures system-wide macros for coordinating multi-device actions across rooms modes (Shutdown, Presentation, PhoneCall, VideoCall).
+        /// Each macro combines progress tracking, DSP preset recall, and camera positioning operations.
+        /// Macros are triggered via the touchpanel and can be extended by touchpanel controllers for panel-specific synchronization.
+        /// </summary>
         private void ConfigMacro()
         {
             try
@@ -223,6 +289,12 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Registers system configuration settings with the Nexus Service Manager.
+        /// Configures room information, source names/icons, video destinations, routing groups, lighting presets,
+        /// and dynamic camera preset configurations. These settings are used throughout the system for dynamic UI updates
+        /// and device control logic.
+        /// </summary>
         private void ConfigNexus()
         {
             try
@@ -236,6 +308,7 @@ namespace NexusVtp
                 NexusServiceManager.System.AddSystemConfig("Video Destination Names", new Settings.VideoDestinationNames());
                 NexusServiceManager.System.AddSystemConfig("Routing Group Names", new Settings.RoutingGroupNames());
                 NexusServiceManager.System.AddSystemConfig("Lighting Preset", new Settings.LightingPresets());
+                NexusServiceManager.System.AddSystemConfig("Volume Names", new Settings.VolumeNames());
                 foreach (var camera in _cameras.Values)
                 {
                     var vaddioCamera = camera as VaddioRoboshotIP;
@@ -252,6 +325,11 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures progress tracking for long-running operations.
+        /// Establishes progress actions (Initialize, Shutdown, Presentation, PhoneCall, VideoCall) with durations and status messages
+        /// to provide user feedback during system state transitions displayed on the touchpanel.
+        /// </summary>
         private void ConfigProgress()
         {
             try
@@ -278,6 +356,12 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Initializes the TS770 touchpanel and instantiates all touchpanel controllers.
+        /// Loads the SGD (Smart Graphics Design) file, creates touchpanel handler instances for each subsystem
+        /// (main navigation, DSP, phone, camera, matrix routing, lighting), and wires inter-TP event handlers
+        /// for coordinated functionality (volume popup timeout management, source routing coordination).
+        /// </summary>
         private void ConfigTp()
         {
             try
@@ -290,11 +374,16 @@ namespace NexusVtp
                 //handles navigation and other non-device-specific functions of the panel
                 tpMain = new TpMain(_panel, "Tp Main", _progress, _macro);
                 tpDsp = new TpDsp(_panel, "Tp Dsp", _dsp);
-                tpDsp.UserActivity += tpMain.TimerTimeoutVolumeRestart;
                 tpDspPhone = new TpDspPhone(_panel, "Tp Dsp Phone", _dsp);
                 tpCamera = new TpCamera(_panel, "Tp Camera", _cameras);
                 tpMatrix = new TpMatrix(_panel, "Tp Matrix");
                 tpLights = new TpLights(_panel, "Tp Lights");
+
+                //ADD INTERACTIONS BETWEEN TPs HERE
+                //tpMain handles page navigation and includes a timeout for the volume popup
+                //tpDsp raises a UserActivity event when the volume is adjusted so that tpMain can reset the timeout to keep the popup visible
+                tpDsp.UserActivity += tpMain.TimerTimeoutVolumeRestart;
+                tpMain.OnRoutingSubpage += tpMatrix.ResetSelectedSource;
             }
             catch (Exception err)
             {
@@ -323,6 +412,12 @@ namespace NexusVtp
             NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{name} is {(obj ? "Online" : "Offline")}");
         }
 
+        /// <summary>
+        /// Timer elapsed event handler that updates the date and time displayed in the touchpanel header.
+        /// Fires every 1000 milliseconds to refresh the clock display with current system date and time.
+        /// </summary>
+        /// <param name="source">The Timer object that raised the elapsed event</param>
+        /// <param name="e">The ElapsedEventArgs containing timing information</param>
         private void OnTimerTimeUpdate(object source, ElapsedEventArgs e)
         {
             try

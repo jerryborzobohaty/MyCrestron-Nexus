@@ -131,6 +131,11 @@ namespace NexusVtp
         private Timer _timerSettingsHeld;
 
         /// <summary>
+        /// Raised when a user interacts with DSP controls on this panel instance (for UI timeout reset)
+        /// </summary>
+        public event Action OnRoutingSubpage;
+
+        /// <summary>
         /// Main page join numbers
         /// </summary>
         enum Page
@@ -483,7 +488,6 @@ namespace NexusVtp
         {
             try
             {
-                //this.SetHeaderName(this._panelName); //now handled in Nexus Settings
                 NexusServiceManager.System.OnSettingChanged += System_OnSettingChanged;
                 this.SetHeaderMessage("MESSAGE");
 
@@ -768,6 +772,7 @@ namespace NexusVtp
                             this.RestoreRoutingGroup();
                             _mainMenu.SetBoolean((uint)MainMenu.Routing, true);
                             _panel.SetBoolean((int)SubpageMain.Routing, true);
+                            OnRoutingSubpage?.Invoke();
                         }
                         break;
                     case (int)MainMenu.Share:

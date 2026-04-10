@@ -1,24 +1,13 @@
-﻿using Crestron.SimplSharp;
-using Crestron.SimplSharp.CrestronDataStore;
+﻿using Crestron.SimplSharp.CrestronDataStore;
 using Crestron.SimplSharpPro;
-using Crestron.SimplSharpPro.AudioDistribution;
-using Crestron.SimplSharpPro.DeviceSupport;
-using Crestron.SimplSharpPro.Media;
 using Forte.SSPro.UI.Helper.Library.UI;
-using Independentsoft.Exchange;
-using Nexus.Driver.Architecture.Components;
 using Nexus.Driver.Architecture.Configuration;
 using Nexus.Framework.Services;
 using Nexus.Utils;
-using Nexus.Vaddio.RoboshotIP.Driver;
-using NexusCommon;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using static Crestron.SimplSharpPro.CrestronConnected.CrestronConnectedDisplayV2.CCVideo;
 using static NexusCommon.Settings;
 using static NexusVtp.SmartGraphics;
 using static NexusVtp.TpHelper;
@@ -26,34 +15,87 @@ using static NexusVtp.TpHelper;
 
 namespace NexusVtp
 {
+    /// <summary>
+    /// Manages matrix routing between audio/video sources and destinations on touchpanels
+    /// </summary>
     internal class TpMatrix
     {
+        /// <summary>
+        /// Maximum number of sources supported
+        /// </summary>
         private const int MaxSource = 8;
+        /// <summary>
+        /// Maximum number of audio destinations supported
+        /// </summary>
         private const int MaxDestAudio = 2;
+        /// <summary>
+        /// Maximum number of video destinations supported
+        /// </summary>
         private const int MaxDestVideo = 4;
 
+        /// <summary>
+        /// Base join number for video destination labels
+        /// </summary>
         private const int LblDestVideoBase = 400;
+        /// <summary>
+        /// Base join number for video destination buttons
+        /// </summary>
         private const int BtnDestVideoBase = 500;
+        /// <summary>
+        /// Base join number for video destination enable states
+        /// </summary>
         private const int EnableDestVideoBase = 540;
+        /// <summary>
+        /// Base join number for video destination visibility states
+        /// </summary>
         private const int VisibleDestVideoBase = 580;
 
+        /// <summary>
+        /// Base join number for audio destination buttons
+        /// </summary>
         private const int BtnDestAudioBase = 700;
+        /// <summary>
+        /// Base join number for audio destination enable states
+        /// </summary>
         private const int EnableDestAudioBase = 740;
+        /// <summary>
+        /// Base join number for audio destination visibility states
+        /// </summary>
         private const int VisibleDestAudioBase = 780;
 
+        /// <summary>
+        /// Descriptive name of the panel for debugging purposes
+        /// </summary>
         private string _panelName = string.Empty;
-        private Panel _Panel;
+        /// <summary>
+        /// The touchpanel interface wrapper
+        /// </summary>
+        private Panel _panel;
+        /// <summary>
+        /// Smart Object for source list display
+        /// </summary>
         private ExtendedSmartObject _sourceList;
+        /// <summary>
+        /// Currently selected source physical input number
+        /// </summary>
         private uint _selectedSource;
 
+        /// <summary>
+        /// Stores audio routing state (destination to source mapping)
+        /// </summary>
         private Dictionary<uint, uint> _routesAudio = new Dictionary<uint, uint>();
+        /// <summary>
+        /// Stores video routing state (destination to source mapping)
+        /// </summary>
         private Dictionary<uint, uint> _routesVideo = new Dictionary<uint, uint>();
 
-        // map the source list to the physical input
-        // key is list item, value is physical input
-        // this provides flexibility to reorder the list separate from the physical connections
-        // so YOU ONLY have to change this one dictionary to reorder the list, and the rest of 
-        // the dics are tied tot he physical input, so they dont have to change if you reorder the list
+        /// <summary>
+        /// Maps source list UI items to physical input numbers
+        /// </summary>
+        /// <remarks>
+        /// Key is list item (1-9), value is physical input (0-8)
+        /// This provides flexibility to reorder the list separate from the physical connections
+        /// </remarks>
         private static readonly Dictionary<uint, uint> MapSourceListItemToInput = new Dictionary<uint, uint>
         {
             { 1, 0 },
@@ -67,14 +109,18 @@ namespace NexusVtp
             { 9, 8 },
         };
 
-
-        //enables are driven by code rather then configuration
+        /// <summary>
+        /// Enable state for audio destinations
+        /// </summary>
         private static readonly Dictionary<uint, bool> enableDestinationAudio = new Dictionary<uint, bool>
         {
             { 1, true },
             { 2, true },
         };
 
+        /// <summary>
+        /// Enable state for video destinations
+        /// </summary>
         private static readonly Dictionary<uint, bool> enableDestinationVideo = new Dictionary<uint, bool>
         {
             { 1, true },
@@ -83,6 +129,9 @@ namespace NexusVtp
             { 4, true },
         };
 
+        /// <summary>
+        /// Enable state for physical inputs
+        /// </summary>
         private static readonly Dictionary<uint, bool> enableInput= new Dictionary<uint, bool>
         {
             { 0, true },
@@ -96,21 +145,38 @@ namespace NexusVtp
             { 8, true },
         };
 
+        /// <summary>
+        /// Icon/image associations for each source input
+        /// </summary>
         private Dictionary<uint, string> _iconSource = new Dictionary<uint, string>();
 
+        /// <summary>
+        /// Display labels for video destination outputs
+        /// </summary>
         private Dictionary<uint, string> _labelDestinationVideo = new Dictionary<uint, string>();
 
+        /// <summary>
+        /// Display labels for source inputs
+        /// </summary>
         private Dictionary<uint, string> _labelSource = new Dictionary<uint, string>();
 
+        /// <summary>
+        /// Visibility state for each source input
+        /// </summary>
         private Dictionary<uint, bool> _visibleSource = new Dictionary<uint, bool>();
 
-        //visible Destinations are driven by code rather then configuration
+        /// <summary>
+        /// Visibility state for audio destinations
+        /// </summary>
         private static readonly Dictionary<uint, bool> visibleDestinationAudio = new Dictionary<uint, bool>
         {
             { 1, true },
             { 2, true },
         };
 
+        /// <summary>
+        /// Visibility state for video destinations
+        /// </summary>
         private static readonly Dictionary<uint, bool> visibleDestinationVideo = new Dictionary<uint, bool>
         {
             { 1, true },
@@ -119,34 +185,56 @@ namespace NexusVtp
             { 4, true },
         };
 
-        // for referencing source and destinations to set enable states based on source selection
+        /// <summary>
+        /// Button join numbers for preset operations
+        /// </summary>
         enum Btn
         {
+            /// <summary>Store preset button</summary>
             Store = 598,
+            /// <summary>Recall preset button</summary>
             Recall = 599,
         }
 
-
+        /// <summary>
+        /// Route type enumeration for audio and video
+        /// </summary>
         enum Type
         {
+            /// <summary>Audio routing</summary>
             Audio = 1,
+            /// <summary>Video routing</summary>
             Video = 2,
         }
 
+        /// <summary>
+        /// Source input identifiers
+        /// </summary>
         enum Source
         {
+            /// <summary>Test source</summary>
             Test = 3,
-
         }
+
+        /// <summary>
+        /// Audio destination signal identifiers
+        /// </summary>
         enum DestinationAudio
         {
+            /// <summary>Enable/disable state</summary>
             Enable = 1,
+            /// <summary>Visibility state</summary>
             Visible = 2,
         }
 
+        /// <summary>
+        /// Video destination signal identifiers
+        /// </summary>
         enum DestinationVideo
         {
+            /// <summary>Enable/disable state</summary>
             Enable = 2,
+            /// <summary>Visibility state</summary>
             Visible = 4,
         }
 
@@ -157,7 +245,7 @@ namespace NexusVtp
         /// <param name="panelName"> Description of the panel for debugging. </param>
         public TpMatrix(Panel panel, string panelName)
         {
-            this._Panel = panel;
+            this._panel = panel;
             this._panelName = panelName;
             Initialize();
         }
@@ -169,42 +257,35 @@ namespace NexusVtp
             {
                 NexusServiceManager.System.OnSettingChanged += System_OnSettingChanged;
                 // buttons - joins
-                var bgDestAudio = _Panel.AddButtonGroup("DestAudio", BtnDestAudioBase, (BtnDestAudioBase + MaxDestAudio));
+                var bgDestAudio = _panel.AddButtonGroup("DestAudio", BtnDestAudioBase, (BtnDestAudioBase + MaxDestAudio));
                 bgDestAudio.OnPanelButtonGroupChange += OnBgDestAudio;
 
-                var bgDestVideo = _Panel.AddButtonGroup("DestVideo", BtnDestVideoBase, (BtnDestVideoBase + MaxDestVideo));
+                var bgDestVideo = _panel.AddButtonGroup("DestVideo", BtnDestVideoBase, (BtnDestVideoBase + MaxDestVideo));
                 bgDestVideo.OnPanelButtonGroupChange += OnBgDestVideo;
 
-                var bgPreset = _Panel.AddButtonGroup("Preset", (uint)Btn.Store, (uint)Btn.Recall);
+                var bgPreset = _panel.AddButtonGroup("Preset", (uint)Btn.Store, (uint)Btn.Recall);
                 bgPreset.OnPanelButtonGroupChange += OnBgPreset;
 
                 //labels - joins
                 for (uint i = 1; i <= MaxDestVideo; i++)
                 {
-                    _Panel.AddTextField($"LblDestVideo{i}", LblDestVideoBase + i);
+                    _panel.AddTextField($"LblDestVideo{i}", LblDestVideoBase + i);
                 }
                 
                 // add smart object 
-                _sourceList = _Panel.AddSmartObject("SourceList", _Panel.ThePanel.SmartObjects[(int)SgId.SourceList]);
+                _sourceList = _panel.AddSmartObject("SourceList", _panel.ThePanel.SmartObjects[(int)SgId.SourceList]);
 
                 // add handler
                 _sourceList.OnSmartObjectSignalChange += OnSourceList;
+
+                ResetSelectedSource();
 
                 // this could probably be removed since it will trigger on the Nexus config change
                 this.SetEnableSourceList();
                 this.SetIconSourceList();
                 this.SetLabelDestinationVideo();
                 this.SetLabelSourceList();
-                this.SetVisibleSourceList();
-
-                //datastore
-                var initResult = CrestronDataStoreStatic.InitCrestronDataStore();
-
-                if (initResult != CrestronDataStore.CDS_ERROR.CDS_SUCCESS)
-                {
-                    ErrorLog.Error("DataStore init failed: {0}", initResult);
-                    return;
-                }
+                this.SetVisibleSourceList();   
             }
             catch (Exception err)
             {
@@ -213,44 +294,57 @@ namespace NexusVtp
             }
         }
 
-        // event handlers - button objects
+        /// <summary>
+        /// Handles audio destination button press events and creates audio routes
+        /// </summary>
+        /// <param name="o">Event sender</param>
+        /// <param name="e">Button group event arguments</param>
         private void OnBgDestAudio(object o, ButtonGroupEventArgs e)
         {
             if (e.Sig.BoolValue)
             {
                 NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {e.Sig.Number}");
                 uint destination = (uint)e.Sig.Number - BtnDestAudioBase;
-                if (destination < 0)
-                {
-                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {destination} is out of range");
-                    return;
-                }
-                else
+                if (destination > 0)
                 {
                     NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {_selectedSource} to {destination}");
                     MakeRoute(Type.Audio, destination, _selectedSource);
+                    ResetSelectedSource();
+                }
+                else
+                {
+                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {destination} is out of range");
                 }
             }
         }
+        /// <summary>
+        /// Handles video destination button press events and creates video routes
+        /// </summary>
+        /// <param name="o">Event sender</param>
+        /// <param name="e">Button group event arguments</param>
         private void OnBgDestVideo(object o, ButtonGroupEventArgs e)
         {
             if (e.Sig.BoolValue)
             {
                 NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {e.Sig.Number}");
                 uint destination = (uint)e.Sig.Number - BtnDestVideoBase;
-                if (destination < 0)
-                {
-                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {destination} is out of range");
-                    return;
-                }
-                else
+                if (destination > 0)
                 {
                     NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {_selectedSource} to {destination}");
                     MakeRoute(Type.Video, destination, _selectedSource);
                 }
+                else
+                {
+                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} {destination} is out of range");
+                }
             }
         }
 
+        /// <summary>
+        /// Handles preset save and recall button events
+        /// </summary>
+        /// <param name="o">Event sender</param>
+        /// <param name="e">Button group event arguments</param>
         private void OnBgPreset(object o, ButtonGroupEventArgs e)
         {
             if (e.Sig.BoolValue)
@@ -270,7 +364,11 @@ namespace NexusVtp
             }
         }
 
-        // event handlers - Smart objects
+        /// <summary>
+        /// Handles source list Smart Object selection and updates routing state
+        /// </summary>
+        /// <param name="o">Event sender</param>
+        /// <param name="ea">Smart Object event arguments</param>
         private void OnSourceList(object o, SmartObjectEventArgs ea)
         {
             //NexusDebugSmartObjectEvent(o, ea);
@@ -284,48 +382,29 @@ namespace NexusVtp
                 NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} handle press");
                 NexusDebugSmartObjectEvent(o, ea);
 
-                // Reset all items - use MapSourceListItemToInput keys (1-9) not physical inputs (0-8)
-                Dictionary<uint, bool> resetMap = new Dictionary<uint, bool>();
-                foreach (var kv in MapSourceListItemToInput)
-                {
-                    resetMap[kv.Key] = false;  // kv.Key is list item number (1-9)
-                }
-                ResetItemSelected(_sourceList, resetMap);
-
-                // Set the selected item
                 uint item = GetItemNumberFromSignalName(ea.Sig.Name);
-                SetItemSelected(_sourceList, item, true);
 
+                //make sure the item was mapped before doing anything
                 if (MapSourceListItemToInput.TryGetValue(item, out uint physicalInput))
                 {
                     _selectedSource = physicalInput;
+                    SetSelectedSource(_selectedSource);
                     NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} mapped item {item} -> physical input {physicalInput}");
                 }
                 else
                 {
                     NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} mapping for item {item} is not defined");
                 }
-                //// use this section for setting destination states based on source selection if needed
-                //// for example if certain sources should only be routable to certain destinations
-                //// you could set the enable state of the destination buttons here based on the selected source
-                ResetValueEnableDestinationVideo();
-                SetValueEnableDestinationVideo();
-                SetEnableDestVideo();
-                //// TODO - move somewhere useful, this is just an example of how to also use visibily states but wouldnt use it on source selection
-                ResetValueVisibleDestinationVideo();
-                SetValueVisibleDestinationVideo();
-                SetVisibleDestVideo();
-                //// Audio - may want to just call the methods directly without the helper, not sure which will be best
-                SetAllDictionaryValues(enableDestinationAudio, true);
-                SetAllDictionaryValues(visibleDestinationAudio, true);
-                SetValueEnableDestinationAudio();
-                SetValueVisibleDestinationAudio();
-                SetEnableDestAudio();
-                SetVisibleDestAudio();
+                SetDestinations();
             }
         }
 
-        // methods
+        /// <summary>
+        /// Creates an audio or video route between source and destination
+        /// </summary>
+        /// <param name="type">The route type (Audio or Video)</param>
+        /// <param name="destination">The destination output number</param>
+        /// <param name="source">The source input number</param>
         private void MakeRoute(Type type, uint destination, uint source)
         {
             switch(type)
@@ -344,6 +423,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Saves all current video routes to persistent data store
+        /// </summary>
         private void PresetStore()
         {
             foreach (var kv in _routesVideo)
@@ -358,12 +440,15 @@ namespace NexusVtp
                 }
                 else
                 {
-                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug,
+                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Errors,
                         $"{_panelName} {MethodBase.GetCurrentMethod().Name} failed to store destination {destination} with error {setLocal}");
                 }
             }
         }
 
+        /// <summary>
+        /// Restores all video routes from persistent data store
+        /// </summary>
         private void PresetRecall()
         {
             for (uint destination = 1; destination <= MaxDestVideo; destination++)
@@ -379,22 +464,99 @@ namespace NexusVtp
                 }
                 else
                 {
-                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug,
+                    NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Errors,
                         $"{_panelName} {MethodBase.GetCurrentMethod().Name} failed to recall destination {destination} with error {getResult}");
                 }
             }
         }
+
+
 
         private void ResetValueEnableDestinationVideo()
         {
             SetAllDictionaryValues(enableDestinationVideo, true);
         }
 
+        /// <summary>
+        /// Resets all video destination visibility states to true
+        /// </summary>
         private void ResetValueVisibleDestinationVideo()
         {
             SetAllDictionaryValues(visibleDestinationVideo, true);
         }
 
+        /// <summary>
+        /// Resets source selection to default state
+        /// </summary>
+        public void ResetSelectedSource()
+        {
+            ResetSourceList();
+            _selectedSource = 0;
+            SetSelectedSource(_selectedSource);
+            ScrollToItem(_sourceList, 1);
+            SetDestinations();
+        }
+
+        /// <summary>
+        /// Resets source list selection state
+        /// </summary>
+        private void ResetSourceList()
+        {
+            // Reset all items - use MapSourceListItemToInput keys (1-9) not physical inputs (0-8)
+            Dictionary<uint, bool> resetMap = new Dictionary<uint, bool>();
+            foreach (var kv in MapSourceListItemToInput)
+            {
+                resetMap[kv.Key] = false;  // kv.Key is list item number (1-9)
+            }
+            ResetItemSelected(_sourceList, resetMap);
+        }
+
+        /// <summary>
+        /// Updates destination enable and visibility states based on current source selection
+        /// </summary>
+        private void SetDestinations()
+        {
+            //// use this section for setting destination states based on source selection if needed
+            //// for example if certain sources should only be routable to certain destinations
+            //// you could set the enable state of the destination buttons here based on the selected source
+            ResetValueEnableDestinationVideo();
+            SetValueEnableDestinationVideo();
+            SetEnableDestVideo();
+            //// TODO - move somewhere useful, this is just an example of how to also use visibily states but wouldnt use it on source selection
+            ResetValueVisibleDestinationVideo();
+            SetValueVisibleDestinationVideo();
+            SetVisibleDestVideo();
+            //// Audio - may want to just call the methods directly without the helper, not sure which will be best
+            SetAllDictionaryValues(enableDestinationAudio, true);
+            SetAllDictionaryValues(visibleDestinationAudio, true);
+            SetValueEnableDestinationAudio();
+            SetValueVisibleDestinationAudio();
+            SetEnableDestAudio();
+            SetVisibleDestAudio();
+        }
+
+        /// <summary>
+        /// Selects a source input and updates the UI to reflect the selection
+        /// </summary>
+        /// <param name="source">The physical source input number to select</param>
+        private void SetSelectedSource(uint source)
+        {
+            NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Debug, $"{_panelName} {MethodBase.GetCurrentMethod().Name} source {source}");
+            this.ResetSourceList();
+            var listItem = MapSourceListItemToInput.FirstOrDefault(kv => kv.Value == source).Key;
+            if (listItem > 0)
+            {
+                SetItemSelected(_sourceList, listItem, true);
+            }
+            else
+            {
+                NexusServiceManager.System.Debug(Nexus.Driver.Architecture.Enumerations.DebuggingLevels.Warning, $"{_panelName} {MethodBase.GetCurrentMethod().Name} source {source} not found in mapping");
+            }
+        }
+
+        /// <summary>
+        /// Configures audio destination enable states based on source selection
+        /// </summary>
         private void SetValueEnableDestinationAudio()
         {
             switch ((Source)_selectedSource)
@@ -407,6 +569,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures audio destination visibility states based on source selection
+        /// </summary>
         private void SetValueVisibleDestinationAudio()
         {
             switch ((Source)_selectedSource)
@@ -419,6 +584,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures video destination enable states based on source selection
+        /// </summary>
         private void SetValueEnableDestinationVideo()
         {
             switch((Source)_selectedSource)
@@ -431,6 +599,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Configures video destination visibility states based on source selection
+        /// </summary>
         private void SetValueVisibleDestinationVideo()
         {
             switch ((Source)_selectedSource)
@@ -443,6 +614,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets enable states for all source list items based on physical input configuration
+        /// </summary>
         private void SetEnableSourceList()
         {
             foreach (var kv in MapSourceListItemToInput)
@@ -456,6 +630,9 @@ namespace NexusVtp
                 }
             }
         }
+        /// <summary>
+        /// Sets icons/images for all source list items
+        /// </summary>
         private void SetIconSourceList()
         {
             foreach (var kv in MapSourceListItemToInput)
@@ -470,13 +647,16 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets enable states for audio destination buttons
+        /// </summary>
         private void SetEnableDestAudio()
         {
             for (uint i = 1; i <= MaxDestAudio; i++)
             {
                 if (enableDestinationAudio.TryGetValue(i, out bool state))
                 {
-                    _Panel.SetBoolean(EnableDestAudioBase + i, state);
+                    _panel.SetBoolean(EnableDestAudioBase + i, state);
                 }
                 else
                 {
@@ -485,13 +665,16 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets enable states for video destination buttons
+        /// </summary>
         private void SetEnableDestVideo()
         {
             for (uint i = 1; i <= MaxDestVideo; i++)
             {
                 if (enableDestinationVideo.TryGetValue(i, out bool state))
                 {
-                    _Panel.SetBoolean(EnableDestVideoBase + i, state);
+                    _panel.SetBoolean(EnableDestVideoBase + i, state);
                 }
                 else
                 {
@@ -500,13 +683,16 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets display labels for all video destination outputs
+        /// </summary>
         private void SetLabelDestinationVideo()
         {
             for(uint i = 1; i <= MaxDestVideo; i++)
             {
                 if (_labelDestinationVideo.TryGetValue(i, out string label))
                 {
-                    _Panel.SetSerial(LblDestVideoBase + i, label);
+                    _panel.SetSerial(LblDestVideoBase + i, label);
                 }
                 else
                 {
@@ -515,13 +701,16 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets visibility states for audio destination buttons
+        /// </summary>
         private void SetVisibleDestAudio()
         {
             for (uint i = 1; i <= MaxDestAudio; i++)
             {
                 if (visibleDestinationAudio.TryGetValue(i, out bool state))
                 {
-                    _Panel.SetBoolean(VisibleDestAudioBase + i, state);
+                    _panel.SetBoolean(VisibleDestAudioBase + i, state);
                 }
                 else
                 {
@@ -530,13 +719,16 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets visibility states for video destination buttons
+        /// </summary>
         private void SetVisibleDestVideo()
         {
             for (uint i = 1; i <= MaxDestVideo; i++)
             {
                 if (visibleDestinationVideo.TryGetValue(i, out bool state))
                 {
-                    _Panel.SetBoolean(VisibleDestVideoBase + i, state);
+                    _panel.SetBoolean(VisibleDestVideoBase + i, state);
                 }
                 else
                 {
@@ -545,6 +737,11 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Updates the destination button label to reflect the current route source
+        /// </summary>
+        /// <param name="type">The route type (Audio or Video)</param>
+        /// <param name="destination">The destination output number</param>
         private void SetLabelRoute(Type type, uint destination)
         {
 
@@ -554,14 +751,14 @@ namespace NexusVtp
                     {
                         if (_routesAudio.TryGetValue(destination, out uint value))
                             if (_labelSource.TryGetValue(value, out string label))
-                                _Panel.SetSerial((uint)(BtnDestAudioBase + destination), label);
+                                _panel.SetSerial((uint)(BtnDestAudioBase + destination), label);
                         break;
                     }
                 case Type.Video:
                     {
                         if (_routesVideo.TryGetValue(destination, out uint value))
                             if (_labelSource.TryGetValue(value, out string label))
-                                _Panel.SetSerial((uint)(BtnDestVideoBase + destination), label);
+                                _panel.SetSerial((uint)(BtnDestVideoBase + destination), label);
                         break;
                     }
                 default:
@@ -570,6 +767,9 @@ namespace NexusVtp
             }
         }
 
+        /// <summary>
+        /// Sets display labels for all source list items
+        /// </summary>
         private void SetLabelSourceList()
         {
             foreach (var kv in MapSourceListItemToInput)
@@ -583,6 +783,9 @@ namespace NexusVtp
                 }
             }
         }
+        /// <summary>
+        /// Sets visibility states for all source list items
+        /// </summary>
         private void SetVisibleSourceList()
         {
             foreach (var kv in MapSourceListItemToInput)
